@@ -1,10 +1,10 @@
 -module(ardvaark_serv).
 -behaviour(gen_server).
 
--export([start_link/1,
-	 stop/0,
-	 message_list/0,
-	 message_count/0]).
+-export([start_link/2,
+	 stop/1,
+	 message_list/1,
+	 message_count/1]).
 
 -export([init/1,
 	 handle_call/3,
@@ -22,36 +22,35 @@
 %% API
 %% ===================================================================
 
-start_link(Queue) when is_binary(Queue)->
-    gen_server:start_link({local, ardvaark_serv}, ardvaark_serv, [Queue], []).
+start_link(Host, Queue) when is_binary(Queue)->
+    {ok, PID} = gen_server:start_link(?MODULE, [Host, Queue], []),
+    PID.
 
-stop() ->
-    gen_server:cast(ardvaark_serv, stop),
+stop(PID) ->
+    gen_server:cast(PID, stop),
     ok.
 
-message_list() ->
-    {message_list, Messages} = gen_server:call(ardvaark_serv, message_list),
-    {message_list, Messages}.
+message_list(PID) ->
+    gen_server:call(PID, message_list).
 
-message_count() ->
-    {message_count, Total} = gen_server:call(ardvaark_serv, message_count),
-    {message_count, Total}.
+message_count(PID) ->
+    gen_server:call(PID, message_count).
 
 %% ===================================================================
 %% Generic server callback procedures
 %% ===================================================================
 
-init([Queue]) ->
-    {Con, Chan} = connect_to_queue("localhost", Queue),
+init([Host, Queue]) ->
+    {Con, Chan} = connect_to_queue(Host, Queue),
     amqp_channel:subscribe(Chan,
 			   #'basic.consume'{queue = Queue,
 					    no_ack = true}, self()),
     {ok, #state{con = Con, chan = Chan, messages = []}}.
 
 handle_call(message_list, _Sender, State) ->
-    {reply, {message_list, State#state.messages}, State};
+    {reply, State#state.messages, State};
 handle_call(message_count, _Sender, State) ->
-    {reply, {message_count, State#state.count}, State}.
+    {reply, State#state.count, State}.
 
 handle_cast(listen, _State) ->
     {noreply, _State};

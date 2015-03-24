@@ -1,6 +1,7 @@
 -module(ardvaark_serv_test).
 
 -include_lib("eunit/include/eunit.hrl").
+-include_lib("common_test/include/ct.hrl").
 -include_lib("amqp_client/include/amqp_client.hrl").
 
 -compile(export_all).
@@ -9,13 +10,15 @@
 %% Test procedures
 %% ===================================================================
 
+% Just a single process
+
 run_complete_test(Host, Queue, Message, Count) ->
     {Con, Chan} = connect_to_queue(Host, Queue),
-    ardvaark_serv:start_link(Queue),
+    PID = ardvaark_serv:start_link(Host, Queue),
     send_messages(Chan, Queue, Message, Count),
-    {message_count, Count} = ardvaark_serv:message_count(),
+    Count = ardvaark_serv:message_count(PID),
     ok = disconnect_from_queue({Con, Chan}),
-    ardvaark_serv:stop(). 
+    ardvaark_serv:stop(PID). 
 
 zero_messages_test() ->
     run_complete_test("localhost", <<"zero messages">>, <<"ping">>, 0).
@@ -25,6 +28,33 @@ one_message_test() ->
 
 two_message_test() ->
     run_complete_test("localhost", <<"two messages">>, <<"ping">>, 2).
+
+% Multiple processes
+
+two_ardvaarks_test() ->
+
+    Total = 3200,
+    Host = "localhost",
+    Queue = <<"two ardvaarks">>,
+    Message = <<"ping">>,
+
+    {Con, Chan} = connect_to_queue(Host, Queue),
+    ok = send_messages(Chan, Queue, Message, Total),
+    ok = disconnect_from_queue({Con, Chan}),
+
+    PIDOne = ardvaark_serv:start_link(Host, Queue),
+    PIDTwo = ardvaark_serv:start_link(Host, Queue),
+    ct:pal("Ardvaark PIDs: ~p, ~p.~n", [PIDOne, PIDTwo]),
+
+    PartOne = ardvaark_serv:message_count(PIDOne),
+    PartTwo = ardvaark_serv:message_count(PIDTwo),
+    ct:pal("Parts: ~p, ~p.~n", [PartOne, PartTwo]),
+    Total = PartOne + PartTwo,
+
+    ok = ardvaark_serv:stop(PIDOne),
+    ok = ardvaark_serv:stop(PIDTwo),
+    
+    ok.
 
 %% ===================================================================
 %% Auxiliary procedures
