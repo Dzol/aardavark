@@ -4,7 +4,8 @@
 -export([start_link/2,
 	 stop/1,
 	 message_list/1,
-	 message_count/1]).
+	 message_count/1,
+	 exometer_name/1]).
 
 -export([init/1,
 	 handle_call/3,
@@ -22,7 +23,7 @@
 %% API
 %% ===================================================================
 
-start_link(Host, Queue) when is_binary(Queue)->
+start_link(Host, Queue) when is_binary(Queue) ->
     {ok, PID} = gen_server:start_link(?MODULE, [Host, Queue], []),
     PID.
 
@@ -36,11 +37,19 @@ message_list(PID) ->
 message_count(PID) ->
     gen_server:call(PID, message_count).
 
+exometer_name(PID) ->
+    [message, count, list_to_atom(pid_to_list(PID))].
+
 %% ===================================================================
 %% Generic server callback procedures
 %% ===================================================================
 
 init([Host, Queue]) ->
+
+    {ok, _Started} = application:ensure_all_started(exometer),
+    exometer:new(exometer_name(self()), spiral),
+    exometer:setopts(exometer_name(self()), [{slot_period, 50000}]),
+
     {Con, Chan} = connect_to_queue(Host, Queue),
     amqp_channel:subscribe(Chan,
 			   #'basic.consume'{queue = Queue,
@@ -64,6 +73,7 @@ handle_info({#'basic.deliver'{}, #amqp_msg{payload = Body}}, State) ->
     io:format(" [OK] Received ~p~n", [Body]),
     Messages = [Body|State#state.messages],
     Count = State#state.count + 1,
+    exometer:update(exometer_name(self()), 1),
     {noreply, State#state{messages = Messages, count = Count}};
 handle_info(Message, State) ->
     io:format("unexpected info: ~p.", [Message]),

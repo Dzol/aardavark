@@ -56,6 +56,33 @@ two_ardvaarks_test() ->
     
     ok.
 
+% Exometer tests
+
+exometer_metrics_test() ->
+
+    Total = 3200,
+    Host = "localhost",
+    Queue = <<"exometer metrics">>,
+    Message = <<"ping">>,    
+
+    {ok, _Started} = application:ensure_all_started(exometer),
+
+    {Con, Chan} = connect_to_queue(Host, Queue),
+    ok = send_messages(Chan, Queue, Message, Total),
+    ok = disconnect_from_queue({Con, Chan}),
+
+    PID = ardvaark_serv:start_link(Host, Queue),
+    timer:sleep(500),
+
+    Info = exometer:info(ardvaark_serv:exometer_name(PID)),
+    ct:pal("Info = ~p~n", [Info]),
+    {ok, Data} = exometer:get_value(ardvaark_serv:exometer_name(PID)),
+    ct:pal("Data = ~p~n", [Data]),
+
+    {count, 3200} = lists:keyfind(count, 1, Data),
+
+    ok = ardvaark_serv:stop(PID).
+
 %% ===================================================================
 %% Auxiliary procedures
 %% ===================================================================
