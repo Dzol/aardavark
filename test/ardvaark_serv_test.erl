@@ -1,94 +1,137 @@
 -module(ardvaark_serv_test).
 
 -include_lib("eunit/include/eunit.hrl").
--include_lib("common_test/include/ct.hrl").
 -include_lib("amqp_client/include/amqp_client.hrl").
 
--compile(export_all).
+% To-Do list:
+% (0) coordinate with rabbit, e.g. purge queues in case something goes wrong
+% (1) get rid of redundant procedures, and reorganise them into correct sections
+% (2) set Host, Queue, Message, etc somewhere else instead of in partial procedures?
 
-%% ===================================================================
-%% Test procedures
-%% ===================================================================
 
-% Just a single process
+%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%% TESTS DESCRIPTIONS %%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-run_complete_test(Host, Queue, Message, Count) ->
-    {Con, Chan} = connect_to_queue(Host, Queue),
-    PID = ardvaark_serv:start_link(Host, Queue),
-    send_messages(Chan, Queue, Message, Count),
-    Count = ardvaark_serv:message_count(PID),
-    ok = disconnect_from_queue({Con, Chan}),
-    ardvaark_serv:stop(PID). 
+start_stop_and_link_test_() ->
+    {"Many ardvaark servers can be linked to the parent proccess.",
+     [{setup,
+       fun () -> start_ardvaarks(Number) end,
+       fun stop_ardvaarks/1,
+       fun linked_to_all/1
+      } || Number <- [1, 2, 16]
+     ]
+    }.
 
-zero_messages_test() ->
-    run_complete_test("localhost", <<"zero messages">>, <<"ping">>, 0).
+one_server_message_count_test_() ->
+    {"A single ardvaark server can count 0, 1, and 2 messages.",
+     [{setup,
+       fun () -> 
+	       queue_messages(Number),
+	       start_ardvaark() end,
+       fun stop_ardvaark/1,
+       fun (PID) ->
+	       [?_assert(Number == message_count(PID))] end
+      } || Number <- [0, 1, 2]
+     ]
+    }.
 
-one_message_test() ->
-    run_complete_test("localhost", <<"one message">>, <<"ping">>, 1).
+eight_ardvaark_s_message_total_test_() ->
+    {"Eight ardvaark servers can count a correct total of all 2048 queued messages.",
+     {setup,
+      fun () ->
+	      queue_messages(2048),
+	      start_ardvaarks(8) end,
+      fun stop_ardvaarks/1,
+      fun (PIDs) when is_list(PIDs) ->
+	      timer:sleep(5 * 1000),	      
+	      [?_assertEqual(2048,  message_total(PIDs))] end
+     }
+    }.
 
-two_message_test() ->
-    run_complete_test("localhost", <<"two messages">>, <<"ping">>, 2).
+eight_arvaark_s_exometer_total_test_() ->
+    {"Eight ardvaark servers can count a correct exometer total of all 2048 queued messages.",
+     {setup,
+      fun () ->
+	      start_exometer(),
+	      queue_messages(2048),
+	      start_ardvaarks(8) end,
+      fun stop_ardvaarks/1,
+      fun (PIDs) when is_list(PIDs) ->
+	      timer:sleep(5 * 1000),
+	      [?_assertEqual(2048,  exometer_total(PIDs))] end
+     }
+    }.
 
-% Multiple processes
 
-two_ardvaarks_test() ->
+%%%%%%%%%%%%%%%%%%%%
+%%% ACTUAL TESTS %%%
+%%%%%%%%%%%%%%%%%%%%
 
-    Total = 3200,
-    Host = "localhost",
-    Queue = <<"two ardvaarks">>,
-    Message = <<"ping">>,
+message_count(PID) ->
+    ardvaark_serv:message_count(PID).
+
+message_total(PIDs) when is_list(PIDs) ->
+    Counts = lists:map(fun message_count/1, PIDs),
+    lists:sum(Counts).
+
+linked_to(PID) when is_pid(PID) -> 
+    {links, ListOfPIDs} = process_info(self(), links),
+    SetOfPIDs = sets:from_list(ListOfPIDs),
+    [?_assert(true = sets:is_element(PID, SetOfPIDs))].
+
+linked_to_all(PIDs) when is_list(PIDs) -> 
+    lists:map(fun linked_to/1, PIDs).
+
+exometer_count(PID) ->
+    
+    {ok, Data} = exometer:get_value(
+		   ardvaark_serv:exometer_name(PID)),
+    {count, Val} = lists:keyfind(count, 1, Data),
+    Val.    
+
+exometer_total(PIDs) when is_list(PIDs) ->
+    
+    Counts = lists:map(fun exometer_count/1, PIDs),
+    lists:sum(Counts).
+
+
+%%%%%%%%%%%%%%%%%%%%%%%
+%%% SETUP FUNCTIONS %%%
+%%%%%%%%%%%%%%%%%%%%%%%
+
+send_messages_to_queue(Host, Queue, Message, Total) ->
 
     {Con, Chan} = connect_to_queue(Host, Queue),
     ok = send_messages(Chan, Queue, Message, Total),
-    ok = disconnect_from_queue({Con, Chan}),
+    ok = disconnect_from_queue({Con, Chan}).
 
-    PIDOne = ardvaark_serv:start_link(Host, Queue),
-    PIDTwo = ardvaark_serv:start_link(Host, Queue),
-    ct:pal("Ardvaark PIDs: ~p, ~p.~n", [PIDOne, PIDTwo]),
+start_ardvaarks(Num) when Num > 0 ->
 
-    PartOne = ardvaark_serv:message_count(PIDOne),
-    PartTwo = ardvaark_serv:message_count(PIDTwo),
-    ct:pal("Parts: ~p, ~p.~n", [PartOne, PartTwo]),
-    Total = PartOne + PartTwo,
+    lists:map(fun (_Arg) -> ardvaark_serv:start_link("localhost", <<"test queue">>) end, lists:seq(1, Num)).
 
-    ok = ardvaark_serv:stop(PIDOne),
-    ok = ardvaark_serv:stop(PIDTwo),
-    
+stop_ardvaarks(PIDs) ->
+
+    lists:map(fun (PID) -> ok = ardvaark_serv:stop(PID) end, PIDs),
     ok.
 
-% Exometer tests
+start_ardvaark() ->
+    ardvaark_serv:start_link("localhost", <<"test queue">>).    
 
-exometer_metrics_test() ->
+stop_ardvaark(PID) ->
+    ardvaark_serv:stop(PID).
 
-    Total = 3200,
-    Host = "localhost",
-    Queue = <<"exometer metrics">>,
-    Message = <<"ping">>,    
+queue_messages(Number) ->
+    send_messages_to_queue("localhost", <<"test queue">>, <<"test message">>, Number).
 
+start_exometer() ->
     {ok, _Started} = application:ensure_all_started(exometer),
+    ok.
 
-    {Con, Chan} = connect_to_queue(Host, Queue),
-    ok = send_messages(Chan, Queue, Message, Total),
-    ok = disconnect_from_queue({Con, Chan}),
 
-    PID = ardvaark_serv:start_link(Host, Queue),
-    timer:sleep(500),
-
-    Info = exometer:info(ardvaark_serv:exometer_name(PID)),
-    ct:pal("Info = ~p~n", [Info]),
-    {ok, Data} = exometer:get_value(ardvaark_serv:exometer_name(PID)),
-    ct:pal("Data = ~p~n", [Data]),
-
-    {count, 3200} = lists:keyfind(count, 1, Data),
-
-    ok = ardvaark_serv:stop(PID).
-
-%% ===================================================================
-%% Auxiliary procedures
-%% ===================================================================
-
-%% -spec connect_to_queue(Place :: string(), Name :: binary()) ->
-%% 			 {Con :: connection(), Chan :: channel()}.
+%%%%%%%%%%%%%%%%%%%%%%%%
+%%% HELPER FUNCTIONS %%%
+%%%%%%%%%%%%%%%%%%%%%%%%
 
 connect_to_queue(Host, Queue) when is_binary(Queue) ->
     {ok, Con} = amqp_connection:start(

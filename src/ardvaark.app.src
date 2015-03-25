@@ -8,7 +8,5 @@
                   stdlib
                  ]},
   {mod, { ardvaark_app, []}},
-  {env, [
-	{queue, <<"metrics">>}
-	]}
+  {env, []}
  ]}.

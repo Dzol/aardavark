@@ -1,9 +1,10 @@
-.PHONY: all compile test clean
+.PHONY: all compile test clean deps
 
 all: compile
 
 deps:
-	cp -r priv/ deps
+	cp -R priv/rabbit_common/ deps/rabbit_common/
+	cp -R priv/amqp_client/ deps/amqp_client/
 	rebar get-deps
 
 compile:

@@ -48,7 +48,7 @@ init([Host, Queue]) ->
 
     {ok, _Started} = application:ensure_all_started(exometer),
     exometer:new(exometer_name(self()), spiral),
-    exometer:setopts(exometer_name(self()), [{slot_period, 50000}]),
+%    exometer:setopts(exometer_name(self()), [{slot_period, 500}]),
 
     {Con, Chan} = connect_to_queue(Host, Queue),
     amqp_channel:subscribe(Chan,
