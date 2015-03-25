@@ -1,4 +1,0 @@
--module(ardvaark_serv).
--export([]).
-
--behaviour(gen_server).
