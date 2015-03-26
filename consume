@@ -1,0 +1,53 @@
+#!/usr/bin/env escript
+-export([main/1]).
+
+
+main([Instances, Host, Queue]) ->
+
+    Deps = filelib:wildcard("./deps/*/ebin"),
+    io:format("Deps = ~p.~n", [Deps]),
+    ok = code:add_paths(Deps),
+    true = code:add_path("./ebin"),
+
+    I = list_to_integer(Instances),
+    H = Host,
+    Q = list_to_binary(Queue),
+
+    ok = start_exometer(),
+    ListOfPIDs = start_ardvaarks(I, H, Q),
+
+    loop(ListOfPIDs).
+
+loop(ListOfPIDs) ->
+  
+    Total = exometer_total(ListOfPIDs),
+    io:format("~p~n", [Total]),
+    loop(ListOfPIDs).
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%% AUXILIARY PROCEDURES %%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+start_exometer() ->
+    {ok, _Started} = application:ensure_all_started(exometer),
+    ok.
+
+
+start_ardvaarks(Num, Host, Queue) when Num > 0 ->
+    lists:map(fun (_Arg) ->
+		      ardvaark_serv:start_link(Host, Queue)
+	      end, lists:seq(1, Num)).
+
+exometer_count(PID) ->
+    
+    {ok, Data} = exometer:get_value(
+		   ardvaark_serv:exometer_name(PID)),
+    {count, Val} = lists:keyfind(count, 1, Data),
+    Val.    
+
+exometer_total(PIDs) when is_list(PIDs) ->
+    
+    Counts = lists:map(fun (PID) ->
+			       exometer_count(PID)
+		       end, PIDs),
+    lists:sum(Counts).

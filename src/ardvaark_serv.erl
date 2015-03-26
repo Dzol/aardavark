@@ -70,11 +70,12 @@ handle_cast(stop, _State) ->
 handle_info(#'basic.consume_ok'{}, _State) ->
     {noreply, _State};
 handle_info({#'basic.deliver'{}, #amqp_msg{payload = Body}}, State) ->
-    io:format(" [OK] Received ~p~n", [Body]),
-    Messages = [Body|State#state.messages],
+%    io:format(" [OK] Received ~p~n", [Body]),
+%    Messages = [Body|State#state.messages],
     Count = State#state.count + 1,
     exometer:update(exometer_name(self()), 1),
-    {noreply, State#state{messages = Messages, count = Count}};
+%    {noreply, State#state{messages = Messages, count = Count}};
+   {noreply, State#state{count = Count}};
 handle_info(Message, State) ->
     io:format("unexpected info: ~p.", [Message]),
     {noreply, State}.
