@@ -1,4 +1,4 @@
--module(ardvaark_serv).
+-module(aardvark_serv).
 -behaviour(gen_server).
 
 -export([start_link/2,

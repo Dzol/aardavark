@@ -1,8 +1,8 @@
-{application,ardvaark,
+{application,aardvark,
              [{description,[]},
               {vsn,"1"},
               {registered,[]},
               {applications,[kernel,stdlib]},
-              {mod,{ardvaark_app,[]}},
+              {mod,{aardvark_app,[]}},
               {env,[]},
-              {modules,[ardvaark_serv]}]}.
+              {modules,[aardvark_serv]}]}.
